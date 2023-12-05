@@ -1,0 +1,275 @@
+---
+title: "Geospastial Data Visualization using Rayshader"
+author: "Akmal Hasan"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+    df_print: paged
+    theme: united
+    highlight: breezedark
+    css: assets/style.css
+  pdf_document:
+    latex_engine: xelatex
+---
+
+
+```{r setup, include=FALSE}
+# clean up the environment
+rm(list = ls())
+
+# setup chunk options
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  cache = FALSE,
+  fig.align = "center",
+  comment = "#>"
+)
+
+options(scipen = 9999)
+```
+
+# Background
+
+Background
+
+Saat ini kebutuhan penggunaan data spasial semakin hari semakin masif. Jika dahulu data spasial dimanfaatkan oleh para akademisi dan pemerintahan, saat ini telah semakin luas penyebarannya hingga ke pelaku bisnis dan masyarakat. Hal ini pun sejalan dengan perkembangan kemajuan teknologi geospasial tak terkecuali dalam hal visualisasi data. Dahulu visualisasi data geospasial hanya mengandalkan kertas (contoh: kertas kalkir) untuk memetakan permukaan bumi dengan keanekaragaman bentuknya di ubah sedimikian rupa menjadi gambar 2 dimensi yang kemudian semua hal tersebut dapat dilakukan dalam komputer. Namun visualisasi data geospasial 2D menghabiskan banyak waktu bagi sebagian orang untuk memahaminya, kurang relevan jika tidak ada improvisasi di zaman serba cepat. 
+
+Untuk mengatasi hal tersebut, serta didukung oleh teknologi pengambilan data yang semakin baik (mendapatkan data ketinggian/altittude yang mudah) menghasilkan visualisasi data geospasial 3D. Visualisasi ini memiliki tampilan yang lebih menarik, mempermudah dan mempercepat orang awam mendapatkan insight dari data geospasial yang ditampilkan. Dalam hal ini dilakukan visualisasi data spasial menggunakan pemrograman R dengan memanfaatkan package rayshader di kawasan Kawah Ijen, Jawa Timur. Daerah tersebut dipilih karena memiliki banyak keragaman topografi sehingga diharapkan tampilan visualisasi yang diberikan menyerupai keadaan aslinya. 
+
+# Data Processing
+
+Berikut ini adalah tahapan dalam membuat peta menggunakan library `rayshader` dalam pemrograman R. 
+
+**1. Library and Setup**
+
+Berikut ini library yang digunakan, dimana library merupakan kumpulan-kumpulan fungsi yang berguna untuk melakukan tugas tertentu sehingga meningkatkan efisiensi karena tidak perlu membuat fungsi secara manual. Banyaknya penggunaan library disesuaikan dengan kebutuhan. 
+
+```{r, echo=FALSE}
+#install packages
+packages <- c("rayshader", 
+              "raster", 
+              "dplyr", 
+              "leaflet", 
+              "RColorBrewer", 
+              "magick", 
+              "animation", 
+              "sf", 
+              "viridis", 
+              "terra", 
+              "av")
+
+# Check if the packages are already installed
+installed_packages <- installed.packages()[, "Package"]
+packages_to_install <- setdiff(packages, installed_packages)
+
+if (length(packages_to_install) > 0) {
+  install.packages(packages_to_install)
+  cat("Packages installed successfully.\n")
+} else {
+  cat("All required packages are already installed.\n")
+}
+```
+Pastikan bahwa library ang sudah di install harus diaktifkan
+
+```{r}
+#activate the peackages
+library(rayshader) # membuat visualisasi 3D 
+library(raster) # mengolah data raster
+library(dplyr) # manipulasi data
+library(leaflet) # visualisasi peta dynamic
+library(RColorBrewer) #visualisasi data 
+library(magick) #manipulasi data raster
+library(animation) #visulaisasi animasi
+library(sf) #manipulasi data spasial
+library(viridis) #visualisasi data 
+library(terra) #manipulasi data raster
+library(av)  #visualisasi data
+```
+
+
+**2. Read TIF File**
+
+Data TIF file merupakan format data yang digunakan untuk menyimpan gambar. Data TIF yang digunakan diperoleh dari website *tanahair.indonesia.go.id*. Untuk membaca file TIF yang merupakan jenis file raster menggunakan fungsi `rast()` dari library `terra`. Berikut code dibawah ini.
+
+```{r}
+# Baca data TIFF
+datatiff <-  rast('data_demnas/demnas_kawahijen.tif')
+
+```
+
+**3. Cek Spesifikasi Data**
+
+Ini akan menampilkan informasi mengenai batas-batas data seperti koordinat minimum dan maksimum.
+
+```{r}
+# Cek Spesifikasi Data
+ext(datatiff)
+```
+
+**4. Definisi Extent Baru**
+
+Dalam tugas ini tidak seluruh data tif yang telah di input digunakan, untuk itu perlu dibatasi ruang lingkup area nya agar sesuai dengan tujuan dan mempercepat komputasi data. Untuk membatasi ruang lingkup area menggunakan bounding box area. Hasil bounding box adalah hasil crop tif file sebelumnya. Setelah disesuaikan dengan bounding box (setelah di crop) data akan disimpan menggunakan fungsi `writeRaster()`.
+
+
+```{r}
+# Definisi extent baru/bounding box area baru untuk cropping
+new_extent <- ext(114.211721,114.268541,-8.090077,-8.035689)
+```
+
+
+```{r}
+# Memotong data raster
+croptiff <- crop(datatiff, y = new_extent)
+```
+
+
+```{r}
+# Simpan data yang telah dipotong ke file GeoTIFF dengan ekstensi .tif
+# writeRaster(data_raster, filename = "path/filename.tif", overwrite = TRUE)
+writeRaster(croptiff, filename = "HASIL_CROP.tif", overwrite = TRUE)
+```
+
+**5. Melakukan Plotting Hasil Bounding Box**
+
+untuk melakukan plotting dapat menggunakan fungsi `plot()` dari library `sf.
+
+```{r}
+plot(datatiff)
+plot(croptiff)
+```
+
+# Pembuatan Visualisasi 2D
+
+Berikut Langkah-langkah pembuatan visualisasi 2 dimensi. 
+
+
+**1. Membuat Bounding Box**
+
+```{r}
+# add bounding box to add osm map
+lat_range  <-  c(-8.090077,-8.035689)
+long_range <- c(114.211721,114.268541)
+```
+
+**2. Konversi data Raster menjadi Matriks**
+
+Kode ini mengambil data raster `croptiff` dan mengonversinya ke dalam bentuk matriks dengan menggunakan fungsi `raster_to_matrix`. Hasil konversi disimpan dalam variabel `tiffmat`.
+
+```{r}
+# Konversi Data
+tiffmat <- raster_to_matrix(croptiff)
+```
+
+**3. Mengubah Ukuran Matriks**
+
+Selanjutnya, kode ini mengubah ukuran matriks yang telah dihasilkan (`tiffmat`) dengan faktor resize sebesar 0.4. Hasil resize disimpan dalam variabel `tiff_ijen`. Pada kode yang diberikan `croptiff` yang digunakan di kode ini tidak didefinisikan sebelumnya. Pastikan `croptiff` adalah data raster yang telah dibaca dan diproses sebelumnya.
+
+```{r}
+# Resize
+tiff_ijen <- resize_matrix(heightmap = tiffmat, scale = 0.4)
+```
+
+**4. Memasukan data Ke dalam Leaflet**
+
+memasukkan data raster kedalam leaflet agar bisa langsung mendapatkan lokasi dan basemap menggunakan library `leaflet` dengan input data raster tiff.
+
+```{r}
+# Definisikan palet warna yang merepresentasikan elevasi
+palet <-rev(terrain.colors(50))
+
+
+# Definisikan palette warna berdasarkan elevasi dalam data raster
+pal <- colorNumeric(palet,
+                    values(croptiff),
+                    na.color = "transparent")
+
+# Konversi data raster dari terra ke raster
+croptiff_raster <- raster(croptiff)
+
+leaflet() %>%
+  addProviderTiles("Stamen.Terrain") %>%
+  addRasterImage(croptiff_raster, colors = pal, opacity = 0.6) %>%
+  addLegend(pal=pal, values = values(croptiff), title = "Elevasi")
+```
+
+
+# Pembuatan Visualisasi 3D
+
+Pembuatan dilakukan menggunakan library `rayshader` yang memungkinkan untuk melakukan visualisasi topografi berdasarkan data ketinggian.Berikut tahapannya,
+
+**1. Membuat Shading(Sorot Bayangan)**
+
+Untuk membuat shading gunakan fungsi `height_shade()` yang memungkinkan untuk meningkatkan visualisasi 3D dimana shading akan mengatur bayangan yang dihasilkan.
+
+```{r}
+# Code here
+tiff_ijen %>% height_shade() %>%  plot_map()
+```
+
+**2. Menambahkan Tekstur(Pola Bayangan)**
+
+Fungsi ini menghasilkan efek tekstur da visualisasi 3D. Dalam contoh ini, tekstur "desert" digunakan. Setelah menerapkan tekstur, `plot_map()` digunakan lagi untuk menggambar visualisasi 3D dengan tekstur.
+
+
+```{r}
+# Add tekstur
+tiff_ijen %>% sphere_shade(texture ="desert") %>%  plot_map()
+```
+
+**3. Deteksi Objek Perairan**
+
+```{r}
+# Add water
+tiff_ijen %>% 
+  sphere_shade(texture ="desert") %>% 
+  add_water(detect_water(tiff_ijen), color="desert") %>% 
+  plot_map()
+```
+
+**4. Pengunaan Efek Bayangan**
+
+Penggunaan bayangan dengan `add_shadow()` dan `ray_shade()
+
+```{r}
+tiff_ijen %>%
+  sphere_shade(texture ="desert") %>%
+  add_water(detect_water(tiff_ijen), color="desert") %>%
+  add_shadow(ray_shade(tiff_ijen)) %>%
+  plot_map()
+```
+
+**5. Melakukan Visualisasi 3d**
+
+```{r}
+montshadow = ray_shade(tiff_ijen, zscale = 4, lambert = FALSE)
+montamb = ambient_shade(tiff_ijen, zscale = 4)
+
+# add 3d map
+tiff_ijen %>%
+  sphere_shade(texture = "imhof1") %>%
+  add_shadow(montshadow, 0.5) %>%
+  add_shadow(montamb, 0) %>%
+  add_water(detect_water(tiff_ijen), color = "lightblue") %>%
+  plot_3d(tiff_ijen, zscale = 4, fov = 0, theta = 360, zoom = 0.75, phi = 0)
+
+# add scalebar
+render_scalebar(limits = c(0, 5, 10),label_unit = "km", position = "W", y = 50,
+                scale_length = c(0.33,1))
+# add compass
+render_compass(position = "N")
+
+# `av` package required for render_movie()
+# magick::image_annotate -> untuk menggunakan title
+
+render_movie(filename = "3D_kawahijen.mp4", type = "oscillate",
+            frames = 360, fps = 30,  phi = 45, theta = 270,
+            title_text = "Ijen Crater 3D Map Using Rayshader")
+```
+
+
